@@ -1,7 +1,7 @@
-from sds_numpy import ARHMM
+from sds_torch import ARHMM
 
-from sds_numpy.transitions import PolyRecurrentTransition
-from sds_numpy.transitions import NeuralRecurrentTransition
+from sds_torch.transitions import PolyRecurrentTransition
+from sds_torch.transitions import NeuralRecurrentTransition
 
 
 class rARHMM(ARHMM):

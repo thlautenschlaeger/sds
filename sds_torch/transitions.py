@@ -2,7 +2,8 @@ import numpy as np
 from numpy import random as npr
 
 from scipy.special import logsumexp as spy_logsumexp
-from scipy.stats import dirichlet
+from scipy.stats import dirichlet as spy_dirichlet
+from torch.distributions import dirichlet
 
 import scipy as sc
 from scipy import special
@@ -56,10 +57,11 @@ class StationaryTransition:
 
     # most likely transition
     def likeliest(self, z, x=None, u=None):
-        return np.argmax(self.matrix[z, :])
+        return torch.argmax(self.matrix[z, :])
 
     def permute(self, perm):
         self.logmat = self.logmat[np.ix_(perm, perm)]
+        # self.logmat = self.logmat[torch.meshgrid(perm, perm)]
 
     def log_prior(self):
         lp = 0.
@@ -91,19 +93,20 @@ class StickyTransition(StationaryTransition):
     def log_prior(self):
         lp = 0
         for k in range(self.nb_states):
-            alpha = self.prior['alpha'] * np.ones(self.nb_states)\
-                    + self.prior['kappa'] * (np.arange(self.nb_states) == k)
-            lp += dirichlet.logpdf(self.matrix[k], alpha)
+            alpha = self.prior['alpha'] * torch.ones(self.nb_states, dtype=torch.float64)\
+                    + self.prior['kappa'] * (torch.arange(self.nb_states) == k)
+            lp += dirichlet.Dirichlet(alpha).log_prob(self.matrix[k])
         return lp
 
     def mstep(self, gamma, x, u, weights=None, reg=1e-16):
-        counts = sum([np.sum(_gamma, axis=0) for _gamma in gamma]) + reg
+        counts = sum([torch.sum(_gamma, dim=0) for _gamma in gamma]) + reg
         counts += self.prior['kappa'] * np.eye(self.nb_states)\
-                  + (self.prior['alpha'] - 1) * np.ones((self.nb_states, self.nb_states))
-        _mat = counts / counts.sum(axis=-1, keepdims=True)
-        self.logmat = np.log(_mat)
+                  + (self.prior['alpha'] - 1) * torch.ones((self.nb_states, self.nb_states), dtype=torch.float64)
+        _mat = counts / counts.sum(dim=-1, keepdim=True)
+        self.logmat = torch.log(_mat)
 
 
+# TODO: adapt to torch
 class PolyRecurrentTransition:
     def __init__(self, nb_states, dm_obs, dm_act, prior,
                  norm=None, degree=1, device='cpu'):
@@ -187,7 +190,7 @@ class PolyRecurrentTransition:
             T = np.maximum(len(_x) - 1, 1)
             _in = np.hstack((_x[:T, :], _u[:T, :self.dm_act]))
             _logtrans = np_float(self.regressor.forward(_in))
-            logtrans.append(_logtrans - logsumexp(_logtrans, axis=-1, keepdims=True))
+            logtrans.append(_logtrans - logsumexp(_logtrans, dim=-1, keepdim=True))
         return logtrans
 
     def mstep(self, zeta, x, u, weights=None, **kwargs):
@@ -317,8 +320,8 @@ class NeuralRecurrentTransition:
         self.prior = prior
 
         if norm is None:
-            self.norm = {'mean': np.zeros((1, self.dm_obs + self.dm_act)),
-                         'std': np.ones((1, self.dm_obs + self.dm_act))}
+            self.norm = {'mean': torch.zeros((1, self.dm_obs + self.dm_act), dtype=torch.float64),
+                         'std': torch.ones((1, self.dm_obs + self.dm_act), dtype=torch.float64)}
         else:
             self.norm = norm
 
