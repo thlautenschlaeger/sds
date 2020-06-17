@@ -1,5 +1,5 @@
 import numpy as np
-from sds.arhmm import ARHMM
+from sds_numpy.arhmm import ARHMM
 from ssm.hmm import HMM as orgHMM
 
 import warnings
@@ -28,6 +28,6 @@ my_arhmm.initialize(x)
 my_ll = my_arhmm.em(x, nb_iter=1000, prec=0., verbose=True)
 
 org_arhmm = orgHMM(3, 2, observations="ar")
-org_ll = org_arhmm.fit(x, method="em", num_em_iters=1000, initialize=True)
+org_ll = org_arhmm.fit(x, method="em", initialize=True)
 
 print("true_ll=", true_ll, "my_ll=", my_ll[-1], "org_ll=", org_ll[-1])
