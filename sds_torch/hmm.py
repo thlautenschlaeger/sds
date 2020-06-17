@@ -103,13 +103,12 @@ class HMM:
                 _norm[0] = logsumexp(_alpha[0], dim=-1, keepdim=True)
                 _alpha[0] = _alpha[0] - _norm[0]
 
-                _aux = torch.zeros((self.nb_states,))
+                _aux = torch.zeros((self.nb_states,), dtype=torch.float64)
                 for t in range(1, T):
                     for k in range(self.nb_states):
                         for j in range(self.nb_states):
                             _aux[j] = _alpha[t - 1, j] + _logtrans[t - 1, j, k]
-                        _alpha[t, k] = logsumexp(_aux) + _logobs[t, k] + _logctl[t, k]
-                    lel = spy_logsumexp(_alpha[t], axis=-1, keepdims=True)
+                        _alpha[t, k] = logsumexp(_aux, dim=0) + _logobs[t, k] + _logctl[t, k]
                     _norm[t] = logsumexp(_alpha[t], dim=-1, keepdim=True)
                     _alpha[t] = _alpha[t] - _norm[t]
 
@@ -143,7 +142,7 @@ class HMM:
                         for j in range(self.nb_states):
                             _aux[j] = _logtrans[t, k, j] + _beta[t + 1, j]\
                                       + _logobs[t + 1, j] + _logctl[t + 1, j]
-                        _beta[t, k] = logsumexp(_aux) - _scale[t]
+                        _beta[t, k] = logsumexp(_aux, dim=0) - _scale[t]
 
             beta.append(_beta)
         return beta
@@ -180,14 +179,13 @@ class HMM:
         for _logobs, _logtrans in zip(logobs, logtrans):
             T = _logobs.shape[0]
 
-            _delta = torch.zeros((T, self.nb_states))
+            _delta = torch.zeros((T, self.nb_states), dtype=torch.float64)
             _args = torch.zeros((T, self.nb_states), dtype=torch.int64)
             _z = torch.zeros((T, ), dtype=torch.int64)
 
             for t in range(T - 2, -1, -1):
                 _aux = _logtrans[t, :] + _delta[t + 1, :] + _logobs[t + 1, :]
-                _delta[t, :] = torch.max(_aux, dim=1)
-                _args[t + 1, :] = torch.argmax(_aux, dim=1)
+                _delta[t, :], _args[t + 1, :] = torch.max(_aux, dim=1)
 
             _z[0] = torch.argmax(loginit + _delta[0, :] + _logobs[0, :], dim=0)
             for t in range(1, T):
@@ -328,7 +326,7 @@ class HMM:
     def filter(self, obs, act=None):
         logliklhds = self.log_likelihoods(obs, act)
         alpha, _ = self.forward(*logliklhds)
-        belief = [np.exp(_alpha - logsumexp(_alpha, dim=1, keepdim=True))
+        belief = [torch.exp(_alpha - logsumexp(_alpha, dim=1, keepdim=True))
                   for _alpha in alpha]
         return belief
 
@@ -337,9 +335,9 @@ class HMM:
         obs = []
 
         for n in range(len(horizon)):
-            _act = np.zeros((horizon[n], self.dm_act)) if act is None else act[n]
-            _obs = np.zeros((horizon[n], self.dm_obs))
-            _state = np.zeros((horizon[n],), np.int64)
+            _act = torch.zeros((horizon[n], self.dm_act), dtype=torch.float64) if act is None else act[n]
+            _obs = torch.zeros((horizon[n], self.dm_obs), dtype=torch.float64)
+            _state = torch.zeros((horizon[n],), dtype=torch.int64)
 
             _state[0] = self.init_state.sample()
             _obs[0, :] = self.observations.sample(_state[0])
@@ -366,7 +364,7 @@ class HMM:
                 nxt_state = None
 
                 # average over transitions and belief space
-                _logtrans = np.squeeze(self.transitions.log_transition(obs, act)[0])
+                _logtrans = torch.squeeze(self.transitions.log_transition(obs, act)[0])
                 _trans = torch.exp(_logtrans - logsumexp(_logtrans, dim=1, keepdim=True))
 
                 _zeta = _trans.T @ belief
@@ -376,7 +374,7 @@ class HMM:
                 for k in range(self.nb_states):
                     nxt_obs += _nxt_belief[k] * self.observations.mean(k, obs, act)
             else:
-                state = np.argmax(belief)
+                state = torch.argmax(belief)
                 nxt_state = self.transitions.likeliest(state, obs, act)
                 nxt_obs = self.observations.mean(nxt_state, obs, act)
 
@@ -392,9 +390,9 @@ class HMM:
             _hist_obs = hist_obs[n]
             _hist_act = hist_act[n]
 
-            _nxt_act = np.zeros((horizon[n], self.dm_act)) if nxt_act is None else nxt_act[n]
-            _nxt_obs = np.zeros((horizon[n] + 1, self.dm_obs))
-            _nxt_state = np.zeros((horizon[n] + 1,), np.int64)
+            _nxt_act = torch.zeros((horizon[n], self.dm_act), dtype=torch.float64) if nxt_act is None else nxt_act[n]
+            _nxt_obs = torch.zeros((horizon[n] + 1, self.dm_obs), dtype=torch.float64)
+            _nxt_state = torch.zeros((horizon[n] + 1,), dtype=torch.int64)
 
             _belief = self.filter(_hist_obs, _hist_act)[0][-1, ...]
 
@@ -413,8 +411,9 @@ class HMM:
                     for t in range(horizon[n]):
 
                         # average over transitions and belief space
-                        _logtrans = np.squeeze(self.transitions.log_transition(_nxt_obs[t, :], _nxt_act[t, :])[0])
-                        _trans = np.exp(_logtrans - logsumexp(_logtrans, axis=1, keepdims=True))
+                        # _logtrans = np.squeeze(self.transitions.log_transition(_nxt_obs[t, :], _nxt_act[t, :])[0])
+                        _logtrans = torch.squeeze(self.transitions.log_transition(_nxt_obs[t, :], _nxt_act[t, :])[0])
+                        _trans = torch.exp(_logtrans - logsumexp(_logtrans, dim=1, keepdim=True))
 
                         # update belief
                         _zeta = _trans.T @ _belief
@@ -424,7 +423,7 @@ class HMM:
                         for k in range(self.nb_states):
                             _nxt_obs[t + 1, :] += _belief[k] * self.observations.mean(k, _nxt_obs[t, :], _nxt_act[t, :])
                 else:
-                    _nxt_state[0] = np.argmax(_belief)
+                    _nxt_state[0] = torch.argmax(_belief)
                     _nxt_obs[0, :] = _hist_obs[-1, ...]
                     for t in range(horizon[n]):
                         _nxt_state[t + 1] = self.transitions.likeliest(_nxt_state[t], _nxt_obs[t, :], _nxt_act[t, :])
