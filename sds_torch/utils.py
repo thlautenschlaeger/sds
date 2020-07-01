@@ -41,18 +41,18 @@ def sample_env(env, nb_rollouts, nb_steps,
     dm_obs = env.observation_space.shape[0]
     dm_act = env.action_space.shape[0]
 
-    ulim = env.action_space.high
+    ulim = torch.from_numpy(env.action_space.high)
 
     for n in range(nb_rollouts):
-        _obs = np.zeros((nb_steps, dm_obs))
-        _act = np.zeros((nb_steps, dm_act))
+        _obs = torch.zeros((nb_steps, dm_obs), dtype=torch.float64)
+        _act = torch.zeros((nb_steps, dm_act), dtype=torch.float64)
 
         x = env.reset()
 
         for t in range(nb_steps):
             if ctl is None:
                 # unifrom distribution
-                u = np.random.uniform(-ulim, ulim)
+                u = torch.distributions.Uniform(-ulim, ulim).sample()
             else:
                 u = ctl(x)
                 u = u + noise_std * npr.randn(1, )
@@ -60,7 +60,7 @@ def sample_env(env, nb_rollouts, nb_steps,
             if apply_limit:
                 u = np.clip(u, -ulim, ulim)
 
-            _obs[t, :] = x
+            _obs[t, :] = torch.from_numpy(x)
             _act[t, :] = u
 
             x, r, _, _ = env.step(u)

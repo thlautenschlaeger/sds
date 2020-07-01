@@ -381,8 +381,8 @@ class NeuralRecurrentTransition:
         return npr.choice(self.nb_states, p=mat[z, :])
 
     def likeliest(self, z, x, u):
-        mat = np.squeeze(np.exp(self.log_transition(x, u)[0]))
-        return np.argmax(mat[z, :])
+        mat = torch.squeeze(torch.exp(self.log_transition(x, u)[0]))
+        return torch.argmax(mat[z, :])
 
     def permute(self, perm):
         self.logmat = self.logmat[np.ix_(perm, perm)]
@@ -401,15 +401,15 @@ class NeuralRecurrentTransition:
         logtrans = []
         for _x, _u in zip(x, u):
             T = np.maximum(len(_x) - 1, 1)
-            _in = np.hstack((_x[:T, :], _u[:T, :self.dm_act]))
-            _logtrans = np_float(self.regressor.forward(_in))
-            logtrans.append(_logtrans - logsumexp(_logtrans, axis=-1, keepdims=True))
+            _in = torch.cat((_x[:T, :], _u[:T, :self.dm_act]), dim=1)
+            _logtrans = self.regressor.forward(_in)
+            logtrans.append(_logtrans - logsumexp(_logtrans, dim=-1, keepdim=True))
         return logtrans
 
     def mstep(self, zeta, x, u, weights=None, **kwargs):
         xu = []
         for _x, _u in zip(x, u):
-            xu.append(np.hstack((_x[:-1, :], _u[:-1, :self.dm_act])))
+            xu.append(torch.cat((_x[:-1, :], _u[:-1, :self.dm_act]), dim=1))
 
         aux = []
         if weights is not None:
@@ -417,7 +417,8 @@ class NeuralRecurrentTransition:
                aux.append(_w[:-1, None, None] * _zeta)
             zeta = aux
 
-        self.regressor.fit(np.vstack(zeta), np.vstack(xu), **kwargs)
+        # TODO: look at the detach
+        self.regressor.fit(torch.cat(zeta).detach(), torch.cat(xu).detach(), **kwargs)
 
 
 class NeuralRecurrentRegressor(nn.Module):
@@ -438,26 +439,26 @@ class NeuralRecurrentRegressor(nn.Module):
 
         _layers = []
         for n in range(len(self.sizes) - 2):
-            _layers.append(nn.Linear(self.sizes[n], self.sizes[n+1]))
-            _layers.append(self.nonlin())
-        _output = _layers.append(nn.Linear(self.sizes[-2], self.sizes[-1], bias=False))
+            _layers.append(nn.Linear(self.sizes[n], self.sizes[n+1]).double())
+            _layers.append(self.nonlin().double())
+        _output = _layers.append(nn.Linear(self.sizes[-2], self.sizes[-1], bias=False).double())
 
         self.layers = nn.Sequential(*_layers).to(self.device)
 
         # _mat = 0.95 * torch.eye(self.nb_states) + 0.05 * torch.rand(self.nb_states, self.nb_states)
         _mat = torch.ones(self.nb_states, self.nb_states)
         _mat /= torch.sum(_mat, dim=-1, keepdim=True)
-        self.logmat = nn.Parameter(torch.log(_mat), requires_grad=True).to(self.device)
+        self.logmat = nn.Parameter(torch.log(_mat), requires_grad=True).double().to(self.device)
 
-        self._mean = torch.as_tensor(self.norm['mean'], dtype=torch.float32).to(self.device)
-        self._std = torch.as_tensor(self.norm['std'], dtype=torch.float32).to(self.device)
+        self._mean = torch.as_tensor(self.norm['mean'], dtype=torch.float64).to(self.device)
+        self._std = torch.as_tensor(self.norm['std'], dtype=torch.float64).to(self.device)
 
         if self.prior:
             if 'alpha' in self.prior and 'kappa' in self.prior:
-                self._concentration = torch.zeros(self.nb_states, self.nb_states, dtype=torch.float32)
+                self._concentration = torch.zeros(self.nb_states, self.nb_states, dtype=torch.float64)
                 for k in range(self.nb_states):
-                    self._concentration[k, ...] = self.prior['alpha'] * torch.ones(self.nb_states)\
-                            + self.prior['kappa'] * torch.as_tensor(torch.arange(self.nb_states) == k, dtype=torch.float32)
+                    self._concentration[k, ...] = self.prior['alpha'] * torch.ones(self.nb_states, dtype=torch.float64)\
+                            + self.prior['kappa'] * torch.as_tensor(torch.arange(self.nb_states) == k, dtype=torch.float64)
                 self._dirichlet = dist.dirichlet.Dirichlet(self._concentration.to(self.device))
 
         self.optim = None

@@ -93,9 +93,9 @@ class HMM:
             _norm = torch.zeros((T, ), dtype=torch.float64)
 
             if cython:
-                forward_cy(to_c(loginit.numpy()), to_c(_logtrans.numpy()),
-                           to_c(_logobs.numpy()), to_c(_logctl.numpy()),
-                           to_c(_alpha.numpy()), to_c(_norm.numpy()))
+                forward_cy(to_c(loginit.detach().numpy()), to_c(_logtrans.detach().numpy()),
+                           to_c(_logobs.detach().numpy()), to_c(_logctl.detach().numpy()),
+                           to_c(_alpha.detach().numpy()), to_c(_norm.detach().numpy()))
             else:
                 for k in range(self.nb_states):
                     _alpha[0, k] = loginit[k] + _logobs[0, k]
@@ -129,9 +129,9 @@ class HMM:
             _beta = torch.zeros((T, self.nb_states), dtype=torch.float64)
 
             if cython:
-                backward_cy(to_c(loginit.numpy()), to_c(_logtrans.numpy()),
-                            to_c(_logobs.numpy()), to_c(_logctl.numpy()),
-                            to_c(_beta.numpy()), to_c(_scale.numpy()))
+                backward_cy(to_c(loginit.detach().numpy()), to_c(_logtrans.detach().numpy()),
+                            to_c(_logobs.detach().numpy()), to_c(_logctl.detach().numpy()),
+                            to_c(_beta.detach().numpy()), to_c(_scale.detach().numpy()))
             else:
                 for k in range(self.nb_states):
                     _beta[T - 1, k] = 0.0 - _scale[T - 1]
@@ -391,7 +391,7 @@ class HMM:
             _hist_act = hist_act[n]
 
             _nxt_act = torch.zeros((horizon[n], self.dm_act), dtype=torch.float64) if nxt_act is None else nxt_act[n]
-            _nxt_obs = torch.zeros((horizon[n] + 1, self.dm_obs), dtype=torch.float64)
+            _nxt_obs = torch.zeros((horizon[n] + 1, self.dm_obs), dtype=torch.float64, requires_grad=True)
             _nxt_state = torch.zeros((horizon[n] + 1,), dtype=torch.int64)
 
             _belief = self.filter(_hist_obs, _hist_act)[0][-1, ...]
@@ -426,7 +426,7 @@ class HMM:
                     _nxt_state[0] = torch.argmax(_belief)
                     _nxt_obs[0, :] = _hist_obs[-1, ...]
                     for t in range(horizon[n]):
-                        _nxt_state[t + 1] = self.transitions.likeliest(_nxt_state[t], _nxt_obs[t, :], _nxt_act[t, :])
+                        _nxt_state[t + 1] = self.transitions.likeliest(_nxt_state[t], _nxt_obs[t, :].detach(), _nxt_act[t, :])
                         _nxt_obs[t + 1, :] = self.observations.mean(_nxt_state[t + 1], _nxt_obs[t, :], _nxt_act[t, :])
 
             nxt_state.append(_nxt_state)

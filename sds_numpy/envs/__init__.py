@@ -11,6 +11,9 @@ from .hybrid.hb_msd import HybridMassSpringDamper
 from .hybrid.hb_pendulum import HybridPendulum
 from .hybrid.hb_pendulum import HybridPendulumWithCartesianObservation
 
+from .hybrid.hb_cartpole import HybridCartpole
+from .hybrid.hb_cartpole import HybridCartpoleWithCartesianObservation
+
 from .quanser.qube.qube import Qube
 from .quanser.qube.qube import QubeWithCartesianObservation
 

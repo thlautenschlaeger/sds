@@ -2,7 +2,17 @@ import gym
 from gym import spaces
 from gym.utils import seeding
 
+from sds_torch.rarhmm import rARHMM
+
 import numpy as np
+import torch
+
+
+def end2ang_torch(x):
+    _state = np.zeros((2, ))
+    _state[1] = x[2]
+    _state[0] = np.arctan2(x[1], x[0])
+    return torch.from_numpy(_state)
 
 
 def end2ang(x):
@@ -14,7 +24,7 @@ def end2ang(x):
 
 class HybridPendulum(gym.Env):
 
-    def __init__(self, rarhmm):
+    def __init__(self, rarhmm: rARHMM):
         self.dm_state = 2
         self.dm_act = 1
         self.dm_obs = 2
@@ -41,8 +51,8 @@ class HybridPendulum(gym.Env):
 
         self.obs = None
 
-        self.hist_obs = np.empty((0, self.dm_obs))
-        self.hist_act = np.empty((0, self.dm_act))
+        self.hist_obs = torch.empty((0, self.dm_obs), dtype=torch.float64)
+        self.hist_act = torch.empty((0, self.dm_act), dtype=torch.float64)
 
         self.np_random = None
 
@@ -65,15 +75,15 @@ class HybridPendulum(gym.Env):
         uhist = np.atleast_2d(uhist)
 
         # filter hidden state
-        b = self.rarhmm.filter(xhist, uhist)[0][-1, ...]
+        b = self.rarhmm.filter(torch.from_numpy(xhist), torch.from_numpy(uhist))[0][-1, ...]
 
         # evolve dynamics
         x, u = xhist[-1, :], uhist[-1, :]
-        zn, xn = self.rarhmm.step(x, u, b, stoch=False, mix=False)
+        zn, xn = self.rarhmm.step(torch.from_numpy(x), torch.from_numpy(u), b, stoch=False)
 
         return zn, xn
 
-    def rewrad(self, x, u):
+    def reward(self, x, u):
         _x = end2ang(x)
         return (_x - self._goal).T @ np.diag(self._goal_weight) @ (_x - self._goal)\
                + u.T @ np.diag(self._act_weight) @ u
@@ -88,11 +98,26 @@ class HybridPendulum(gym.Env):
         self.hist_act = np.vstack((self.hist_act, _act))
 
         # compute reward
-        rwrd = self.rewrad(self.obs, _act)
+        rwrd = self.reward(self.obs, _act)
+
+        # evolve dynamics
+        _, obs = self.dynamics(self.hist_obs, self.hist_act)
+        self.obs = obs.numpy()
+        self.hist_obs = np.vstack((self.hist_obs, self.obs))
+
+        return self.obs, rwrd, False, {}
+
+    def step_torch(self, act):
+        # apply action constraints
+        _act = torch.clamp(act, -self._act_max, self._act_max)
+        self.hist_act = torch.cat((self.hist_act, _act), dim=0)
+
+        # compute reward
+        rwrd = self.reward(self.obs, _act)
 
         # evolve dynamics
         _, self.obs = self.dynamics(self.hist_obs, self.hist_act)
-        self.hist_obs = np.vstack((self.hist_obs, self.obs))
+        self.hist_obs = torch.cat((self.hist_obs, self.obs[None]), dim=0)
 
         return self.obs, rwrd, False, {}
 
@@ -101,9 +126,20 @@ class HybridPendulum(gym.Env):
         self.hist_act = np.empty((0, self.dm_act))
 
         _state = self.rarhmm.init_state.sample()
-        self.obs = self.rarhmm.init_observation.sample(z=_state)
+        self.obs = self.rarhmm.init_observation.sample(z=_state).numpy()
 
         self.hist_obs = np.vstack((self.hist_obs, self.obs))
+
+        return self.obs
+
+    def reset_torch(self):
+        self.hist_obs = torch.empty((0, self.dm_obs), dtype=torch.float64)
+        self.hist_act = torch.empty((0, self.dm_act), dtype=torch.float64)
+
+        _state = self.rarhmm.init_state.sample()
+        self.obs = self.rarhmm.init_observation.sample(z=_state)
+
+        self.hist_obs = torch.cat((self.hist_obs, self.obs[None]), dim=0)
 
         return self.obs
 

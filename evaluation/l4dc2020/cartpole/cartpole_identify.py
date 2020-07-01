@@ -118,8 +118,8 @@ if __name__ == "__main__":
     dm_obs = env.observation_space.shape[0]
     dm_act = env.action_space.shape[0]
 
-    nb_train_rollouts, nb_train_steps = 15, 250
-    nb_test_rollouts, nb_test_steps = 5, 100
+    nb_train_rollouts, nb_train_steps = 45, 250
+    nb_test_rollouts, nb_test_steps = 15, 100
 
     train_obs, train_act = sample_env(env, nb_train_rollouts, nb_train_steps)
     test_obs, test_act = sample_env(env, nb_test_rollouts, nb_test_steps)
@@ -173,9 +173,9 @@ if __name__ == "__main__":
     #
     # plt.show()
 
-    # torch.save(rarhmm, open(rarhmm.trans_type + "_rarhmm_cartpole_polar.pkl", "wb"))
+    torch.save(rarhmm, open(rarhmm.trans_type + "_rarhmm_cartpole_polar.pkl", "wb"))
 
-    hr = [1, 5, 10, 15, 20, 25]
+    hr = [1, 5, 10, 15, 20, 25, 50]
     for h in hr:
         _mse, _smse, _evar = rarhmm.kstep_mse(test_obs, test_act, horizon=h)
         print(f"MSE: {_mse}, SMSE:{_smse}, EVAR:{_evar}")

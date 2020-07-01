@@ -4,6 +4,8 @@ from gym.utils import seeding
 
 import numpy as np
 
+from sds_torch.hmm import HMM
+
 
 def normalize(x):
     return ((x + np.pi) % (2. * np.pi)) - np.pi

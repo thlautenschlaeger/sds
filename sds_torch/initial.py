@@ -36,7 +36,7 @@ class CategoricalInitState:
 
     @property
     def pi(self):
-        return torch.exp(self.logpi - logsumexp(self.logpi))
+        return torch.exp(self.logpi - logsumexp(self.logpi, dim=0))
 
     def initialize(self):
         pass
@@ -103,8 +103,8 @@ class GaussianInitObservation:
         self._sqrt_cov = torch.cholesky(value + self.reg * torch.eye(self.dm_obs, dtype=torch.float64))
 
     def sample(self, z):
-        _x = mvn(mean=self.mean(z), cov=self.cov[z, ...]).rvs()
-        return np.atleast_1d(_x)
+        _x = torch.distributions.MultivariateNormal(self.mean(z),self.cov[z, ...]).sample()
+        return _x
 
     def initialize(self, x):
         from sklearn.cluster import KMeans
