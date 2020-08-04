@@ -82,7 +82,7 @@ class HybridCartpole(gym.Env):
 
         # evolve dynamics
         x, u = xhist[-1, :], uhist[-1, :]
-        zn, xn = self.rarhmm.step(x, u, b, stoch=False, mix=False)
+        zn, xn = self.rarhmm.step(x, u, b, stoch=False)
 
         return zn, xn
 
@@ -101,7 +101,7 @@ class HybridCartpole(gym.Env):
         self.hist_act = np.vstack((self.hist_act, _act))
 
         # compute reward
-        rwrd = self.rewrad(self.obs, _act)
+        rwrd = self.reward(self.obs, _act)
 
         # evolve dynamics
         _, self.obs = self.dynamics(self.hist_obs, self.hist_act)
@@ -136,8 +136,8 @@ class HybridCartpole(gym.Env):
 
 class HybridCartpoleWithCartesianObservation(HybridCartpole):
 
-    def __init__(self):
-        super(HybridCartpoleWithCartesianObservation, self).__init__()
+    def __init__(self, rarhmm):
+        super(HybridCartpoleWithCartesianObservation, self).__init__(rarhmm)
         self.dm_obs = 5
 
         # o = [x, cos, sin, xd, thd]

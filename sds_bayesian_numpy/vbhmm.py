@@ -153,17 +153,19 @@ class VBHMM:
 
         return gamma, xi, np.hstack(norm).sum(axis=0)
 
-    def m_step(self, gamma, xi, obs, act, **kwargs):
+    def m_step(self, gamma, xi, obs, act, init_mstep_kwargs,
+               trans_mstep_kwargs, obs_mstep_kwargs, **kwargs):
 
         if hasattr(self, 'init_obs_model'):
             self.init_obs_model.m_step(obs, gamma)
 
-        self.init_model.m_step(gamma, **kwargs)
-        self.trans_model.m_step(xi, obs, act, **kwargs)
-        self.obs_model.m_step(obs, gamma, act, **kwargs)
+        self.init_model.m_step(gamma, **init_mstep_kwargs)
+        self.trans_model.m_step(xi, obs, act, **trans_mstep_kwargs)
+        self.obs_model.m_step(obs, gamma, act, **obs_mstep_kwargs)
 
     @ensure_args_are_viable_lists
-    def em(self, obs, act=None, n_iter=100, prec=10e-4, **kwargs):
+    def em(self, obs, act=None, n_iter=100, prec=10e-4, init_mstep_kwargs={},
+           trans_mstep_kwargs={}, obs_mstep_kwargs={}, **kwargs):
         process_id = kwargs.get('process_id', 0)
 
         log_liks = []
@@ -177,7 +179,10 @@ class VBHMM:
         for _ in pbar:
             prev_log_lik = log_lik
             gamma, xi, log_lik = self.e_step(obs, act)
-            self.m_step(gamma, xi, obs, act)
+            self.m_step(gamma, xi, obs, act, init_mstep_kwargs,
+                        trans_mstep_kwargs,
+                        obs_mstep_kwargs,
+                        **kwargs)
             log_liks.append(log_lik)
 
             if _delta > 0:
@@ -249,7 +254,7 @@ class VBHMM:
                     for t in range(horizon[n]):
                         _nxt_state[t + 1] = self.trans_model.sample(_nxt_state[t], _nxt_obs[t, :], _nxt_act[t,:])
                         _nxt_obs[t + 1, :] = self.obs_model.sample(_nxt_state[t + 1], _nxt_obs[t, :], _nxt_act[t,:])
-                        _obs_runs[t + 1, :] +=_nxt_obs[t + 1, :]
+                        _obs_runs[t + 1, :] += _nxt_obs[t + 1, :]
                 _nxt_obs = _obs_runs/stoch_reps
                 _nxt_obs[0, :] = _hist_obs[-1, ...]
             else:

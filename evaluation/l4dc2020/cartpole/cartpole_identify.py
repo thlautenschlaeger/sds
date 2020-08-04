@@ -146,34 +146,34 @@ if __name__ == "__main__":
                                       trans_kwargs=trans_kwargs,
                                       obs_mstep_kwargs=obs_mstep_kwargs,
                                       trans_mstep_kwargs=trans_mstep_kwargs,
-                                      nb_iter=200, prec=1e-2)
+                                      nb_iter=15, prec=1e-2)
     rarhmm = models[np.argmax(scores)]
 
     print("rarhmm, stochastic, " + rarhmm.trans_type)
     print(np.c_[lls, scores])
 
-    # rarhmm.em(train_obs, train_act, nb_iter=100,
-    #           obs_mstep_kwargs=obs_mstep_kwargs,
-    #           trans_mstep_kwargs=trans_mstep_kwargs,
-    #           prec=1e-4, verbose=True)
+    rarhmm.em(train_obs, train_act, nb_iter=5,
+              obs_mstep_kwargs=obs_mstep_kwargs,
+              trans_mstep_kwargs=trans_mstep_kwargs,
+              prec=1e-4, verbose=True)
 
-    # plt.figure(figsize=(8, 8))
-    # _, state = rarhmm.viterbi(train_obs, train_act)
-    # _seq = npr.choice(len(train_obs))
-    #
-    # plt.subplot(211)
-    # plt.plot(train_obs[_seq])
-    # plt.xlim(0, len(train_obs[_seq]))
-    #
-    # plt.subplot(212)
-    # plt.imshow(state[_seq][None, :], aspect="auto", cmap=cmap, vmin=0, vmax=len(colors) - 1)
-    # plt.xlim(0, len(train_obs[_seq]))
-    # plt.ylabel("$z_{\\mathrm{inferred}}$")
-    # plt.yticks([])
-    #
-    # plt.show()
+    plt.figure(figsize=(8, 8))
+    _, state = rarhmm.viterbi(train_obs, train_act)
+    _seq = npr.choice(len(train_obs))
 
-    torch.save(rarhmm, open(rarhmm.trans_type + "_rarhmm_cartpole_polar.pkl", "wb"))
+    plt.subplot(211)
+    plt.plot(train_obs[_seq])
+    plt.xlim(0, len(train_obs[_seq]))
+
+    plt.subplot(212)
+    plt.imshow(state[_seq][None, :], aspect="auto", cmap=cmap, vmin=0, vmax=len(colors) - 1)
+    plt.xlim(0, len(train_obs[_seq]))
+    plt.ylabel("$z_{\\mathrm{inferred}}$")
+    plt.yticks([])
+
+    plt.show()
+
+    # torch.save(rarhmm, open(rarhmm.trans_type + "_rarhmm_cartpole_cart.pkl", "wb"))
 
     hr = [1, 5, 10, 15, 20, 25, 50]
     for h in hr:

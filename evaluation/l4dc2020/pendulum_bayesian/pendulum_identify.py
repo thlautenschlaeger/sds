@@ -1,6 +1,7 @@
 import numpy as np
 import numpy.random as npr
 
+from sds_bayesian_numpy.ext.create_gym_data import create_rollouts
 from sds_bayesian_numpy.vbrarhmm import VBrARHMM as rARHMM
 
 
@@ -54,7 +55,8 @@ def create_job(kwargs):
 
     rarhmm.em(obs=train_obs, act=train_act,
               n_iter=nb_iter, prec=prec,
-              process_id=process_id)
+              process_id=process_id,
+              trans_mstep_kwargs=trans_mstep_kwargs)
 
     nb_train = np.vstack(train_obs).shape[0]
     nb_all = np.vstack(obs).shape[0]
@@ -107,7 +109,7 @@ if __name__ == "__main__":
     import gym
     import sds_numpy
 
-    seed = 1337
+    seed = 13372
 
     random.seed(seed)
     npr.seed(seed)
@@ -124,7 +126,7 @@ if __name__ == "__main__":
     dm_obs = env.observation_space.shape[0]
     dm_act = env.action_space.shape[0]
 
-    nb_train_rollouts, nb_train_steps = 15, 250
+    nb_train_rollouts, nb_train_steps = 15, 1000
     nb_test_rollouts, nb_test_steps = 15, 100
 
     train_obs, train_act = sample_env(env, nb_train_rollouts, nb_train_steps)
@@ -137,27 +139,29 @@ if __name__ == "__main__":
 
     obs_prior = {'W0': np.eye(dm_obs),
                          'nu0': dm_obs + 2,
-                         # 'm0': np.zeros(dm_obs),
-                         'm0': np.random.random(dm_obs),
+                         'm0': np.zeros(dm_obs),
+                         # 'm0': np.random.random(dm_obs),
                          'beta0': 0.05,
                          'P0': np.eye(dm_obs),
                          'eta0': dm_obs + 2,
                          'K0': np.eye((dm_obs + dm_act) + 1), #* 0.25,
-                         # 'M0': np.zeros((dm_obs, (dm_obs + dm_act) + 1))
-                         'M0': np.random.multivariate_normal(np.zeros(dm_obs + dm_act + 1), np.eye(dm_obs + dm_act + 1), dm_obs)
+                         'M0': np.zeros((dm_obs, (dm_obs + dm_act) + 1))
+                         # 'M0': np.random.multivariate_normal(np.zeros(dm_obs + dm_act + 1), np.eye(dm_obs + dm_act + 1), dm_obs)
                          }
 
     obs_mstep_kwargs = {'use_prior': True}
 
     trans_type = 'neural'
     trans_prior = {'l2_penalty': 1e-32, 'alpha': 1, 'kappa': 1}
+    trans_prior = {}
     # trans_prior = None/
     trans_kwargs = {'hidden_neurons': (24,),
                     'norm': {'mean': np.array([0., 0., 0., 0.]),
-                             'std': np.array([1., 1., 8., 2.5])}}
-    trans_mstep_kwargs = {'nb_iter': 50, 'batch_size': 256, 'lr': 5e-4}
+                             'std': np.array([1., 1., 8., 2.5])},
+                    'lr': 5e-3}
+    trans_mstep_kwargs = {'n_iter': 50, 'batch_size': 256, 'lr': 5e-3}
 
-    models, lls, scores = parallel_em(nb_jobs=1,
+    models, lls, scores = parallel_em(nb_jobs=8,
                                       nb_states=nb_states,
                                       obs=train_obs, act=train_act,
                                       init_prior=init_prior,
@@ -167,32 +171,32 @@ if __name__ == "__main__":
                                       trans_kwargs=trans_kwargs,
                                       obs_mstep_kwargs=obs_mstep_kwargs,
                                       trans_mstep_kwargs=trans_mstep_kwargs,
-                                      nb_iter=5, prec=1e-2)
+                                      nb_iter=100, prec=1e-2)
     rarhmm = models[np.argmax(scores)]
 
     print("rarhmm, stochastic, " + rarhmm.trans_type)
     print(np.c_[lls, scores])
 
-    # rarhmm.em(train_obs, train_act, nb_iter=100,
-    #           obs_mstep_kwargs=obs_mstep_kwargs,
-    #           trans_mstep_kwargs=trans_mstep_kwargs,
-    #           prec=1e-4, verbose=True)
+    rarhmm.em(train_obs, train_act, n_iter=50,
+              obs_mstep_kwargs=obs_mstep_kwargs,
+              trans_mstep_kwargs=trans_mstep_kwargs,
+              prec=1e-4, verbose=True)
 
-    # plt.figure(figsize=(8, 8))
-    # _, state = rarhmm.viterbi(train_obs, train_act)
-    # _seq = npr.choice(len(train_obs))
-    #
-    # plt.subplot(211)
-    # plt.plot(train_obs[_seq])
-    # plt.xlim(0, len(train_obs[_seq]))
-    #
-    # plt.subplot(212)
-    # plt.imshow(state[_seq][None, :], aspect="auto", cmap=cmap, vmin=0, vmax=len(colors) - 1)
-    # plt.xlim(0, len(train_obs[_seq]))
-    # plt.ylabel("$z_{\\mathrm{inferred}}$")
-    # plt.yticks([])
-    #
-    # plt.show()
+    plt.figure(figsize=(8, 8))
+    _, state = rarhmm.viterbi(train_obs, train_act)
+    _seq = npr.choice(len(train_obs))
+
+    plt.subplot(211)
+    plt.plot(train_obs[_seq])
+    plt.xlim(0, len(train_obs[_seq]))
+
+    plt.subplot(212)
+    plt.imshow(state[_seq][None, :], aspect="auto", cmap=cmap, vmin=0, vmax=len(colors) - 1)
+    plt.xlim(0, len(train_obs[_seq]))
+    plt.ylabel("$z_{\\mathrm{inferred}}$")
+    plt.yticks([])
+
+    plt.show()
 
     # torch.save(rarhmm, open(rarhmm.trans_type + "_rarhmm_pendulum_polar.pkl", "wb"))
 

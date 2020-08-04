@@ -298,6 +298,105 @@ class PolyRecurrentRegressor(nn.Module):
             #     print("Loss: {:.4f}".format(loss))
 
 
+class NeuralRecurrentRegressor(nn.Module):
+    def __init__(self, sizes, prior, norm, nonlin='relu',
+                 device=torch.device('cpu')):
+        super(NeuralRecurrentRegressor, self).__init__()
+
+        self.device = device
+
+        self.sizes = sizes
+        self.nb_states = self.sizes[-1]
+
+        self.prior = prior
+        self.norm = norm
+
+        nlist = dict(relu=nn.ReLU, tanh=nn.Tanh, splus=nn.Softplus)
+        self.nonlin = nlist[nonlin]
+
+        _layers = []
+        for n in range(len(self.sizes) - 2):
+            _layers.append(nn.Linear(self.sizes[n], self.sizes[n+1]))
+            _layers.append(self.nonlin())
+        _output = _layers.append(nn.Linear(self.sizes[-2], self.sizes[-1], bias=False))
+
+        self.layers = nn.Sequential(*_layers).to(self.device)
+
+        # _mat = 0.95 * torch.eye(self.nb_states) + 0.05 * torch.rand(self.nb_states, self.nb_states)
+        _mat = torch.ones(self.nb_states, self.nb_states)
+        _mat /= torch.sum(_mat, dim=-1, keepdim=True)
+        self.logmat = nn.Parameter(torch.log(_mat), requires_grad=True).to(self.device)
+
+        self._mean = torch.as_tensor(self.norm['mean'], dtype=torch.float32).to(self.device)
+        self._std = torch.as_tensor(self.norm['std'], dtype=torch.float32).to(self.device)
+
+        if self.prior:
+            if 'alpha' in self.prior and 'kappa' in self.prior:
+                self._concentration = torch.zeros(self.nb_states, self.nb_states, dtype=torch.float32)
+                for k in range(self.nb_states):
+                    self._concentration[k, ...] = self.prior['alpha'] * torch.ones(self.nb_states)\
+                            + self.prior['kappa'] * torch.as_tensor(torch.arange(self.nb_states) == k, dtype=torch.float32)
+                self._dirichlet = dist.dirichlet.Dirichlet(self._concentration.to(self.device))
+
+        self.optim = None
+
+    @torch.no_grad()
+    def reset(self):
+        self.layers.reset_parameters()
+
+        _mat = torch.ones(self.nb_states, self.nb_states)
+        _mat /= torch.sum(_mat, dim=-1, keepdim=True)
+        self.logmat.data = torch.log(_mat).to(self.device)
+
+    def log_prior(self):
+        lp = torch.as_tensor(0., device=self.device)
+        if self.prior:
+            if hasattr(self, '_dirichlet'):
+                _matrix = torch.exp(self.logmat - torch.logsumexp(self.logmat, dim=-1, keepdim=True))
+                lp += self._dirichlet.log_prob(_matrix.to(self.device)).sum()
+        return lp
+
+    def normalize(self, xu):
+        return (xu - self._mean) / self._std
+
+    def propagate(self, xu):
+        out = self.normalize(xu)
+        return self.layers.forward(out)
+
+    @ensure_args_torch_floats
+    def forward(self, xu):
+        out = self.propagate(xu)
+        _logtrans = self.logmat[None, :, :] + out[:, None, :]
+        return _logtrans - torch.logsumexp(_logtrans, dim=-1, keepdim=True)
+
+    def elbo(self, zeta, xu, batch_size, set_size):
+        logtrans = self.forward(xu)
+        return torch.sum(zeta * logtrans) * set_size / batch_size + self.log_prior()
+
+    @ensure_args_torch_floats
+    def fit(self, zeta, xu, nb_iter=100, batch_size=None, lr=1e-3):
+        if self.prior and 'l2_penalty' in self.prior:
+            self.optim = Adam(self.parameters(), lr=lr, weight_decay=self.prior['l2_penalty'])
+        else:
+            self.optim = Adam(self.parameters(), lr=lr)
+
+        set_size = xu.shape[0]
+        batch_size = set_size if batch_size is None else batch_size
+        batches = list(BatchSampler(SubsetRandomSampler(range(set_size)), batch_size, True))
+
+        for n in range(nb_iter):
+            for batch in batches:
+                self.optim.zero_grad()
+                loss = - self.elbo(zeta[batch], xu[batch], batch_size, set_size)
+                loss.backward()
+                self.optim.step()
+
+                # if n % 10 == 0:
+                #     print('Epoch: {}/{}.............'.format(n, nb_iter), end=' ')
+                #     print("Loss: {:.4f}".format(loss))
+
+
+
 class NeuralRecurrentTransition:
 
     def __init__(self, nb_states, dm_obs, dm_act, prior, norm=None,
@@ -413,101 +512,3 @@ class NeuralRecurrentTransition:
             zeta = aux
 
         self.regressor.fit(np.vstack(zeta), np.vstack(xu), **kwargs)
-
-
-class NeuralRecurrentRegressor(nn.Module):
-    def __init__(self, sizes, prior, norm, nonlin='relu',
-                 device=torch.device('cpu')):
-        super(NeuralRecurrentRegressor, self).__init__()
-
-        self.device = device
-
-        self.sizes = sizes
-        self.nb_states = self.sizes[-1]
-
-        self.prior = prior
-        self.norm = norm
-
-        nlist = dict(relu=nn.ReLU, tanh=nn.Tanh, splus=nn.Softplus)
-        self.nonlin = nlist[nonlin]
-
-        _layers = []
-        for n in range(len(self.sizes) - 2):
-            _layers.append(nn.Linear(self.sizes[n], self.sizes[n+1]))
-            _layers.append(self.nonlin())
-        _output = _layers.append(nn.Linear(self.sizes[-2], self.sizes[-1], bias=False))
-
-        self.layers = nn.Sequential(*_layers).to(self.device)
-
-        # _mat = 0.95 * torch.eye(self.nb_states) + 0.05 * torch.rand(self.nb_states, self.nb_states)
-        _mat = torch.ones(self.nb_states, self.nb_states)
-        _mat /= torch.sum(_mat, dim=-1, keepdim=True)
-        self.logmat = nn.Parameter(torch.log(_mat), requires_grad=True).to(self.device)
-
-        self._mean = torch.as_tensor(self.norm['mean'], dtype=torch.float32).to(self.device)
-        self._std = torch.as_tensor(self.norm['std'], dtype=torch.float32).to(self.device)
-
-        if self.prior:
-            if 'alpha' in self.prior and 'kappa' in self.prior:
-                self._concentration = torch.zeros(self.nb_states, self.nb_states, dtype=torch.float32)
-                for k in range(self.nb_states):
-                    self._concentration[k, ...] = self.prior['alpha'] * torch.ones(self.nb_states)\
-                            + self.prior['kappa'] * torch.as_tensor(torch.arange(self.nb_states) == k, dtype=torch.float32)
-                self._dirichlet = dist.dirichlet.Dirichlet(self._concentration.to(self.device))
-
-        self.optim = None
-
-    @torch.no_grad()
-    def reset(self):
-        self.layers.reset_parameters()
-
-        _mat = torch.ones(self.nb_states, self.nb_states)
-        _mat /= torch.sum(_mat, dim=-1, keepdim=True)
-        self.logmat.data = torch.log(_mat).to(self.device)
-
-    def log_prior(self):
-        lp = torch.as_tensor(0., device=self.device)
-        if self.prior:
-            if hasattr(self, '_dirichlet'):
-                _matrix = torch.exp(self.logmat - torch.logsumexp(self.logmat, dim=-1, keepdim=True))
-                lp += self._dirichlet.log_prob(_matrix.to(self.device)).sum()
-        return lp
-
-    def normalize(self, xu):
-        return (xu - self._mean) / self._std
-
-    def propagate(self, xu):
-        out = self.normalize(xu)
-        return self.layers.forward(out)
-
-    @ensure_args_torch_floats
-    def forward(self, xu):
-        out = self.propagate(xu)
-        _logtrans = self.logmat[None, :, :] + out[:, None, :]
-        return _logtrans - torch.logsumexp(_logtrans, dim=-1, keepdim=True)
-
-    def elbo(self, zeta, xu, batch_size, set_size):
-        logtrans = self.forward(xu)
-        return torch.sum(zeta * logtrans) * set_size / batch_size + self.log_prior()
-
-    @ensure_args_torch_floats
-    def fit(self, zeta, xu, nb_iter=100, batch_size=None, lr=1e-3):
-        if self.prior and 'l2_penalty' in self.prior:
-            self.optim = Adam(self.parameters(), lr=lr, weight_decay=self.prior['l2_penalty'])
-        else:
-            self.optim = Adam(self.parameters(), lr=lr)
-
-        set_size = xu.shape[0]
-        batch_size = set_size if batch_size is None else batch_size
-        batches = list(BatchSampler(SubsetRandomSampler(range(set_size)), batch_size, True))
-
-        for n in range(nb_iter):
-            for batch in batches:
-                self.optim.zero_grad()
-                loss = - self.elbo(zeta[batch], xu[batch], batch_size, set_size)
-                loss.backward()
-                self.optim.step()
-
-                # if n % 10 == 0:
-                #     print('Epoch: {}/{}.............'.format(n, nb_iter), end=' ')
-                #     print("Loss: {:.4f}".format(loss))

@@ -125,7 +125,7 @@ class GaussianBayesianObservation:
 
         return logliks
 
-    def m_step(self, x, gamma, u=None):
+    def m_step(self, x, gamma, u=None, **kwargs):
         self.params = self.update_gauss_params(x, gamma)
 
         _gamma = np.vstack(gamma)
@@ -268,7 +268,7 @@ class AutoRegressiveGaussianBayesianObservation:
 
         return log_prediction
 
-    def m_step(self, x, gamma, u):
+    def m_step(self, x, gamma, u, **kwargs):
         xs, ys, ws = [], [], []
         for _x, _u, _w in zip(x, u, gamma):
             # Stack xs for computation with constant c
@@ -405,7 +405,7 @@ class MultiAutoRegressiveGaussianBayesianObservation:
         return log_prediction
 
 
-    def m_step(self, x, gamma):
+    def m_step(self, x, gamma, **kwargs):
         xs, ys, ws = [], [], []
         for _x, _w in zip(x, gamma):
             # Stack xs for computation with constant c
@@ -484,7 +484,7 @@ class AutoRegressiveGaussianObservation:
 
         return loglik
 
-    def m_step(self, x, gamma):
+    def m_step(self, x, gamma, **kwargs):
         xs, ys, ws = [], [], [],
         for _x, _w in zip(x, gamma):
             # Stack xs for computation with constant c
