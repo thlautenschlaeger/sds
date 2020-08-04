@@ -122,9 +122,9 @@ class AutoRegressiveGaussianObservation:
 
         self._sqrt_cov = torch.zeros((self.nb_states, self.dm_obs, self.dm_obs), dtype=torch.float64)
 
-        self.A = torch.zeros((self.nb_states, self.dm_obs, self.dm_obs), dtype=torch.float64)
-        self.B = torch.zeros((self.nb_states, self.dm_obs, self.dm_act), dtype=torch.float64)
-        self.c = torch.zeros((self.nb_states, self.dm_obs), dtype=torch.float64)
+        self.A = torch.zeros((self.nb_states, self.dm_obs, self.dm_obs), dtype=torch.float64, requires_grad=True)
+        self.B = torch.zeros((self.nb_states, self.dm_obs, self.dm_act), dtype=torch.float64, requires_grad=True)
+        self.c = torch.zeros((self.nb_states, self.dm_obs), dtype=torch.float64, requires_grad=True)
 
         # for k in range(self.nb_states):
         #     self._sqrt_cov[k, ...] = npr.randn(self.dm_obs, self.dm_obs)
@@ -150,7 +150,7 @@ class AutoRegressiveGaussianObservation:
     def mean(self, z, x, u):
         # Einsum throws error if action dimension is 0
         return torch.einsum('kh,...h->...k', self.A[z, ...], x) +\
-               (torch.einsum('kh,...h->...k', self.B[z, ...], u) if u.shape[1] else 0.) + self.c[z, :]
+               (torch.einsum('kh,...h->...k', self.B[z, ...], u) if u.shape[-1] else 0.) + self.c[z, :]
 
     @property
     def cov(self):

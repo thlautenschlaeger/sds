@@ -25,7 +25,7 @@ for t in T:
 
 my_hmm = HMM(nb_states=5, dm_obs=2)
 my_hmm.initialize(x)
-my_ll = my_hmm.em(x, nb_iter=100, prec=0., verbose=True)
+my_ll = my_hmm.em(x, nb_iter=1000, prec=0., verbose=True)
 
 my_hmm.viterbi(x)
 

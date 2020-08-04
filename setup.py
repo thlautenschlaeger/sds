@@ -26,6 +26,15 @@ ext_modules.append(
               language="c++")
 )
 
+# ext_modules.append(
+#     Extension('sds_torch.cython.hmm_cy',
+#               extra_compile_args=["-fopenmp"] if USE_OPENMP else ["-stdlib=libc++"],
+#               extra_link_args=["-fopenmp"] if USE_OPENMP else ["-stdlib=libc++"],
+#               sources=["sds_numpy/cython/hmm_cy.pyx"],
+#               include_dirs = ['sds_torch/cython/'],
+#               language="c++")
+# )
+
 
 setup(name='sds_numpy',
       version='0.0.1',

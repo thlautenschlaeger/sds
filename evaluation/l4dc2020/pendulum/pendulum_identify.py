@@ -104,25 +104,29 @@ if __name__ == "__main__":
     import gym
     import sds_numpy
 
-    random.seed(1337)
-    npr.seed(1337)
-    torch.manual_seed(1337)
+    seed = 1337
+
+    random.seed(seed)
+    npr.seed(seed)
+    torch.manual_seed(seed)
     torch.set_num_threads(1)
 
     env = gym.make('Pendulum-ID-v1')
+    # env = gym.make('Pendulum-v0')
     env._max_episode_steps = 5000
     env.unwrapped._dt = 0.01
     env.unwrapped._sigma = 1e-4
-    env.seed(1337)
+    env.seed(seed)
 
     dm_obs = env.observation_space.shape[0]
     dm_act = env.action_space.shape[0]
 
     nb_train_rollouts, nb_train_steps = 15, 250
-    nb_test_rollouts, nb_test_steps = 5, 100
+    nb_test_rollouts, nb_test_steps = 15, 100
 
     train_obs, train_act = sample_env(env, nb_train_rollouts, nb_train_steps)
     test_obs, test_act = sample_env(env, nb_test_rollouts, nb_test_steps)
+    lele = env.action_space.sample()
 
     nb_states = 7
 
@@ -137,7 +141,7 @@ if __name__ == "__main__":
                              'std': np.array([1., 1., 8., 2.5])}}
     trans_mstep_kwargs = {'nb_iter': 50, 'batch_size': 256, 'lr': 5e-4}
 
-    models, lls, scores = parallel_em(nb_jobs=6,
+    models, lls, scores = parallel_em(nb_jobs=10,
                                       nb_states=nb_states,
                                       obs=train_obs, act=train_act,
                                       trans_type=trans_type,
@@ -146,7 +150,7 @@ if __name__ == "__main__":
                                       trans_kwargs=trans_kwargs,
                                       obs_mstep_kwargs=obs_mstep_kwargs,
                                       trans_mstep_kwargs=trans_mstep_kwargs,
-                                      nb_iter=200, prec=1e-2)
+                                      nb_iter=20, prec=1e-2)
     rarhmm = models[np.argmax(scores)]
 
     print("rarhmm, stochastic, " + rarhmm.trans_type)
@@ -175,7 +179,7 @@ if __name__ == "__main__":
 
     # torch.save(rarhmm, open(rarhmm.trans_type + "_rarhmm_pendulum_polar.pkl", "wb"))
 
-    hr = [1, 5, 10, 15, 20, 25]
+    hr = [1, 5, 10, 15, 20, 25, 50]
     for h in hr:
         _mse, _smse, _evar = rarhmm.kstep_mse(test_obs, test_act, horizon=h)
         print(f"MSE: {_mse}, SMSE:{_smse}, EVAR:{_evar}")

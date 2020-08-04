@@ -118,8 +118,8 @@ if __name__ == "__main__":
     dm_obs = env.observation_space.shape[0]
     dm_act = env.action_space.shape[0]
 
-    nb_train_rollouts, nb_train_steps = 15, 250
-    nb_test_rollouts, nb_test_steps = 5, 100
+    nb_train_rollouts, nb_train_steps = 45, 250
+    nb_test_rollouts, nb_test_steps = 15, 100
 
     train_obs, train_act = sample_env(env, nb_train_rollouts, nb_train_steps)
     test_obs, test_act = sample_env(env, nb_test_rollouts, nb_test_steps)
@@ -146,36 +146,36 @@ if __name__ == "__main__":
                                       trans_kwargs=trans_kwargs,
                                       obs_mstep_kwargs=obs_mstep_kwargs,
                                       trans_mstep_kwargs=trans_mstep_kwargs,
-                                      nb_iter=200, prec=1e-2)
+                                      nb_iter=15, prec=1e-2)
     rarhmm = models[np.argmax(scores)]
 
     print("rarhmm, stochastic, " + rarhmm.trans_type)
     print(np.c_[lls, scores])
 
-    # rarhmm.em(train_obs, train_act, nb_iter=100,
-    #           obs_mstep_kwargs=obs_mstep_kwargs,
-    #           trans_mstep_kwargs=trans_mstep_kwargs,
-    #           prec=1e-4, verbose=True)
+    rarhmm.em(train_obs, train_act, nb_iter=5,
+              obs_mstep_kwargs=obs_mstep_kwargs,
+              trans_mstep_kwargs=trans_mstep_kwargs,
+              prec=1e-4, verbose=True)
 
-    # plt.figure(figsize=(8, 8))
-    # _, state = rarhmm.viterbi(train_obs, train_act)
-    # _seq = npr.choice(len(train_obs))
-    #
-    # plt.subplot(211)
-    # plt.plot(train_obs[_seq])
-    # plt.xlim(0, len(train_obs[_seq]))
-    #
-    # plt.subplot(212)
-    # plt.imshow(state[_seq][None, :], aspect="auto", cmap=cmap, vmin=0, vmax=len(colors) - 1)
-    # plt.xlim(0, len(train_obs[_seq]))
-    # plt.ylabel("$z_{\\mathrm{inferred}}$")
-    # plt.yticks([])
-    #
-    # plt.show()
+    plt.figure(figsize=(8, 8))
+    _, state = rarhmm.viterbi(train_obs, train_act)
+    _seq = npr.choice(len(train_obs))
 
-    # torch.save(rarhmm, open(rarhmm.trans_type + "_rarhmm_cartpole_polar.pkl", "wb"))
+    plt.subplot(211)
+    plt.plot(train_obs[_seq])
+    plt.xlim(0, len(train_obs[_seq]))
 
-    hr = [1, 5, 10, 15, 20, 25]
+    plt.subplot(212)
+    plt.imshow(state[_seq][None, :], aspect="auto", cmap=cmap, vmin=0, vmax=len(colors) - 1)
+    plt.xlim(0, len(train_obs[_seq]))
+    plt.ylabel("$z_{\\mathrm{inferred}}$")
+    plt.yticks([])
+
+    plt.show()
+
+    # torch.save(rarhmm, open(rarhmm.trans_type + "_rarhmm_cartpole_cart.pkl", "wb"))
+
+    hr = [1, 5, 10, 15, 20, 25, 50]
     for h in hr:
         _mse, _smse, _evar = rarhmm.kstep_mse(test_obs, test_act, horizon=h)
         print(f"MSE: {_mse}, SMSE:{_smse}, EVAR:{_evar}")
