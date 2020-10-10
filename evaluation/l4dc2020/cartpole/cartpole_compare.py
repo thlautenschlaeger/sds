@@ -5,7 +5,7 @@ import numpy.random as npr
 from sds_numpy import rARHMM, ARHMM
 from sds_numpy.utils import sample_env
 
-from reg.gp import DynamicMultiTaskGPRegressor
+# from reg.gp import DynamicMultiTaskGPRegressor
 from reg.nn import DynamicNNRegressor
 from reg.nn import DynamicRNNRegressor
 from reg.nn import DynamicLSTMRegressor
@@ -146,56 +146,56 @@ def parallel_rarhmm_test(models, obs, act, horizon):
     return list(map(list, zip(*res)))
 
 
-def parallel_gp_fit(obs, act, incremental, preprocess,
-                    nb_iter, nb_jobs, gpu):
-
-    def fit_gp_job(args):
-        obs, act, incremental, preprocess, nb_iter, gpu = args
-
-        input = np.vstack([np.hstack((_x[:-1, :], _u[:-1, :]))
-                           for _x, _u in zip(obs, act)])
-        if incremental:
-            target = np.vstack([_x[1:, :] - _x[:-1, :] for _x in obs])
-        else:
-            target = np.vstack([_x[1:, :] for _x in obs])
-
-        gp = DynamicMultiTaskGPRegressor(input_size=input.shape[-1],
-                                         target_size=target.shape[-1],
-                                         incremental=incremental,
-                                         device='gpu' if gpu else 'cpu')
-        gp.fit(target, input, nb_iter, preprocess=preprocess)
-
-        return gp
-
-    from sklearn.model_selection import ShuffleSplit
-    spliter = ShuffleSplit(n_splits=nb_jobs, train_size=0.4)
-
-    obs_lists, act_lists = [], []
-    for idx, _ in spliter.split(np.arange(len(obs))):
-        obs_lists.append([obs[i] for i in idx])
-        act_lists.append([act[i] for i in idx])
-
-    args = [(_obs, _act, incremental, preprocess, nb_iter, gpu)
-            for _obs, _act in zip(obs_lists, act_lists)]
-
-    nb_threads = 6 if gpu else min(nb_jobs, nb_cores)
-    return Parallel(nb_threads, verbose=10, backend='loky')\
-        (map(delayed(fit_gp_job), args))
-
-
-def parallel_gp_test(models, obs, act, horizon, gpu):
-
-    def test_gp_job(args):
-        model, obs, act, horizon = args
-        return model.kstep_mse(obs, act, horizon)
-
-    args = [(model, obs, act, horizon) for model in models]
-
-    nb_threads = 6 if gpu else len(models)
-    res = Parallel(nb_threads, verbose=10, backend='loky')\
-        (map(delayed(test_gp_job), args))
-
-    return list(map(list, zip(*res)))
+# def parallel_gp_fit(obs, act, incremental, preprocess,
+#                     nb_iter, nb_jobs, gpu):
+#
+#     def fit_gp_job(args):
+#         obs, act, incremental, preprocess, nb_iter, gpu = args
+#
+#         input = np.vstack([np.hstack((_x[:-1, :], _u[:-1, :]))
+#                            for _x, _u in zip(obs, act)])
+#         if incremental:
+#             target = np.vstack([_x[1:, :] - _x[:-1, :] for _x in obs])
+#         else:
+#             target = np.vstack([_x[1:, :] for _x in obs])
+#
+#         gp = DynamicMultiTaskGPRegressor(input_size=input.shape[-1],
+#                                          target_size=target.shape[-1],
+#                                          incremental=incremental,
+#                                          device='gpu' if gpu else 'cpu')
+#         gp.fit(target, input, nb_iter, preprocess=preprocess)
+#
+#         return gp
+#
+#     from sklearn.model_selection import ShuffleSplit
+#     spliter = ShuffleSplit(n_splits=nb_jobs, train_size=0.4)
+#
+#     obs_lists, act_lists = [], []
+#     for idx, _ in spliter.split(np.arange(len(obs))):
+#         obs_lists.append([obs[i] for i in idx])
+#         act_lists.append([act[i] for i in idx])
+#
+#     args = [(_obs, _act, incremental, preprocess, nb_iter, gpu)
+#             for _obs, _act in zip(obs_lists, act_lists)]
+#
+#     nb_threads = 6 if gpu else min(nb_jobs, nb_cores)
+#     return Parallel(nb_threads, verbose=10, backend='loky')\
+#         (map(delayed(fit_gp_job), args))
+#
+#
+# def parallel_gp_test(models, obs, act, horizon, gpu):
+#
+#     def test_gp_job(args):
+#         model, obs, act, horizon = args
+#         return model.kstep_mse(obs, act, horizon)
+#
+#     args = [(model, obs, act, horizon) for model in models]
+#
+#     nb_threads = 6 if gpu else len(models)
+#     res = Parallel(nb_threads, verbose=10, backend='loky')\
+#         (map(delayed(test_gp_job), args))
+#
+#     return list(map(list, zip(*res)))
 
 
 def parallel_fnn_fit(obs, act, size, incremental, preprocess,
@@ -361,7 +361,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Compare SOTA Models on Cartpole')
     parser.add_argument('--env', help='environment observation', default='cart')
     parser.add_argument('--model', help='representation model', default='rarhmm')
-    parser.add_argument('--nb_jobs', help='number of data splits', default=24, type=int)
+    parser.add_argument('--nb_jobs', help='number of data splits', default=6, type=int)
     parser.add_argument('--incremental', help='approximate delta', action='store_true', default=False)
     parser.add_argument('--preprocess', help='whiten data', action='store_true', default=False)
     parser.add_argument('--nn_size', help='size of NN layer', default=64, type=int)
@@ -483,29 +483,29 @@ if __name__ == "__main__":
 
             k.append(h)
 
-    elif args.model == 'gp':
-        # fit gp
-        gps = parallel_gp_fit(obs=train_obs, act=train_act,
-                              nb_iter=75, nb_jobs=args.nb_jobs,
-                              incremental=args.incremental,
-                              preprocess=args.preprocess,
-                              gpu=args.gpu)
-
-        for h in hr:
-            print("Horizon: ", h)
-            mse, smse, evar = parallel_gp_test(gps, test_obs, test_act,
-                                               int(h), args.gpu)
-
-            k_mse_avg.append(np.mean(mse))
-            k_mse_std.append(np.std(mse))
-
-            k_smse_avg.append(np.mean(smse))
-            k_smse_std.append(np.std(smse))
-
-            k_evar_avg.append(np.mean(evar))
-            k_evar_std.append(np.std(evar))
-
-            k.append(h)
+    # elif args.model == 'gp':
+    #     # fit gp
+    #     gps = parallel_gp_fit(obs=train_obs, act=train_act,
+    #                           nb_iter=75, nb_jobs=args.nb_jobs,
+    #                           incremental=args.incremental,
+    #                           preprocess=args.preprocess,
+    #                           gpu=args.gpu)
+    #
+    #     for h in hr:
+    #         print("Horizon: ", h)
+    #         mse, smse, evar = parallel_gp_test(gps, test_obs, test_act,
+    #                                            int(h), args.gpu)
+    #
+    #         k_mse_avg.append(np.mean(mse))
+    #         k_mse_std.append(np.std(mse))
+    #
+    #         k_smse_avg.append(np.mean(smse))
+    #         k_smse_std.append(np.std(smse))
+    #
+    #         k_evar_avg.append(np.mean(evar))
+    #         k_evar_std.append(np.std(evar))
+    #
+    #         k.append(h)
 
     elif args.model == 'fnn':
         # fit fnn

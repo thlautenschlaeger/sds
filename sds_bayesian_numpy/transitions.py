@@ -23,6 +23,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 to_torch = lambda arr: torch.from_numpy(arr).float().to(device)
 to_npy = lambda arr: arr.detach().double().cpu().numpy()
 
+
 class BayesianStationaryTransition:
 
     def __init__(self, n_states, obs_dim, act_dim, prior={'omega0': np.ones(3)}):
@@ -86,7 +87,7 @@ class BayesianStationaryTransition:
         """ Transition matrix with correct probabilities """
         return np.exp(self.log_prob)
 
-    def m_step(self, xi, x, u=None):
+    def m_step(self, xi, x, u=None, **kwargs):
         _counts = sum([np.sum(_xi, axis=0) for _xi in xi])
         for k in range(self.n_states):
             self.posterior['omega'][k] = self.prior['omega0'][k] + _counts[k]
@@ -281,174 +282,174 @@ class BayesianNeuralRecurrentRegressor(nn.Module):
                 self.optim.step()
 
 
-class NeuralRecurrentTransition:
-
-    def __init__(self, nb_states, dm_obs, dm_act, prior, norm=None,
-                 hidden_neurons=(25,), nonlinearity='relu', device='cpu', **kwargs):
-
-        if device == 'gpu' and torch.cuda.is_available():
-            self.device = torch.device('cuda:0')
-        else:
-            self.device = torch.device('cpu')
-
-        self.nb_states = nb_states
-        self.dm_obs = dm_obs
-        self.dm_act = dm_act
-
-        self.prior = prior
-
-        if norm is None:
-            self.norm = {'mean': np.zeros((1, self.dm_obs + self.dm_act)),
-                         'std': np.ones((1, self.dm_obs + self.dm_act))}
-        else:
-            self.norm = norm
-
-        self.nonlinearity = nonlinearity
-
-        sizes = [self.dm_obs + self.dm_act] + list(hidden_neurons) + [self.nb_states]
-        self.regressor = NeuralRecurrentRegressor(sizes, prior=self.prior, norm=self.norm,
-                                                  nonlin=self.nonlinearity, device=self.device)
-
-    @property
-    @ensure_res_numpy_floats
-    def logmat(self):
-        return self.regressor.logmat.data
-
-    @logmat.setter
-    @ensure_args_torch_floats
-    def logmat(self, value):
-        self.regressor.logmat.data = value
-
-    @property
-    @ensure_res_numpy_floats
-    def weights(self):
-        return [self.regressor.layer.weight.data, self.regressor.output.weight.data]
-
-    @weights.setter
-    @ensure_args_torch_floats
-    def weights(self, value):
-        self.regressor.layer.weight.data = value[0]
-        self.regressor.output.weight.data = value[1]
-
-    @property
-    @ensure_res_numpy_floats
-    def biases(self):
-        return [self.regressor.layer.bias.data, self.regressor.output.bias.data]
-
-    @biases.setter
-    @ensure_args_torch_floats
-    def biases(self, value):
-        self.regressor.layer.bias.data = value[0]
-        self.regressor.output.bias.data = value[1]
-
-    @property
-    def params(self):
-        return tuple([self.logmat, self.weights, self.biases])
-
-    @params.setter
-    def params(self, value):
-        self.logmat = value[0]
-        self.weights = value[1]
-        self.biases = value[2]
-
-    def initialize(self, x, u, **kwargs):
-        pass
-
-    def sample(self, z, x, u):
-        mat = np.squeeze(np.exp(self.log_transition(x, u)[0]))
-        return npr.choice(self.nb_states, p=mat[z, :])
-
-    def likeliest(self, z, x, u):
-        mat = np.squeeze(np.exp(self.log_transition(x, u)[0]))
-        return np.argmax(mat[z, :])
-
-    def permute(self, perm):
-        self.logmat = self.logmat[np.ix_(perm, perm)]
-        self.weights[-1] = self.weights[-1][:, perm]
-        self.biases[-1] = self.biases[-1][perm]
-
-    @ensure_res_numpy_floats
-    def log_prior(self):
-        self.regressor.eval()
-        return self.regressor.log_prior()
-
-    def log_transition(self, x, u):
-        self.regressor.eval()
-
-        logtrans = []
-        for _x, _u in zip(x, u):
-            T = np.maximum(len(_x) - 1, 1)
-            _in = np.hstack((_x[:T, :], _u[:T, :self.dm_act]))
-            _logtrans = np_float(self.regressor.forward(_in))
-            logtrans.append(_logtrans - logsumexp(_logtrans, axis=-1, keepdims=True))
-        return logtrans
-
-    def m_step(self, zeta, x, u, weights=None, **kwargs):
-        xu = []
-        for _x, _u in zip(x, u):
-            xu.append(np.hstack((_x[:-1, :], _u[:-1, :self.dm_act])))
-
-        aux = []
-        if weights is not None:
-            for _w, _zeta in zip(weights, zeta):
-               aux.append(_w[:-1, None, None] * _zeta)
-            zeta = aux
-
-        self.regressor.fit(np.vstack(zeta), np.vstack(xu), **kwargs)
-
-    @property
-    def params(self):
-        return super(NeuralRecurrentTransition, self).params + (self.weights, self.biases)
-
-    @property
-    def transition_matrix(self):
-        return to_npy(self.regressor.logmat.data)
-
-    def log_prior(self):
-        self.regressor.eval()
-        if self.prior:
-            return to_npy(self.regressor.log_prior())
-        else:
-            return self.regressor.log_prior()
-
-    def sample(self, z, x, u=None):
-        return self.maximum(z, x)
-
-    def maximum(self, z, x, u=None):
-        mat = np.squeeze(np.exp(self.log_transition(x, u)[0]))
-        return np.argmax(mat[z, :])
-
-    def likeliest(self, z, x, u=None):
-        mat = np.squeeze(np.exp(self.log_transition(x, u)[0]))
-        return np.argmax(mat[z, :])
-
-    def log_transition(self, x, u=None):
-        """ log transition for single x and u """
-        self.regressor.eval()
-
-        logtrans = []
-        _logtrans = to_npy(self.regressor.forward(to_torch(np.hstack((x,u))[None])))
-        logtrans.append(_logtrans)
-        return logtrans
-
-    def log_transitions(self, x, u=None):
-        """ log transitions for stack of x and u """
-        self.regressor.eval()
-
-        logtrans = []
-        for _x, _u in zip(x, u):
-            T = np.maximum(len(_x) - 1, 1)
-            _in = np.hstack((_x[:T, :], _u[:T, :self.act_dim]))
-            _logtrans = to_npy(self.regressor.forward(to_torch(_in)))
-            logtrans.append(_logtrans)
-        return logtrans
-
-    def m_step(self, xi, x, u, **kwargs):
-        xu = []
-        for _x, _u in zip(x, u):
-            xu.append(np.hstack((_x[:-1, :], _u[:-1, :self.act_dim])))
-
-        self.regressor.fit(to_torch(np.vstack(xi)), to_torch(np.vstack(xu)), **kwargs)
+# class NeuralRecurrentTransition:
+#
+#     def __init__(self, nb_states, dm_obs, dm_act, prior, norm=None,
+#                  hidden_neurons=(25,), nonlinearity='relu', device='cpu', **kwargs):
+#
+#         if device == 'gpu' and torch.cuda.is_available():
+#             self.device = torch.device('cuda:0')
+#         else:
+#             self.device = torch.device('cpu')
+#
+#         self.nb_states = nb_states
+#         self.dm_obs = dm_obs
+#         self.dm_act = dm_act
+#
+#         self.prior = prior
+#
+#         if norm is None:
+#             self.norm = {'mean': np.zeros((1, self.dm_obs + self.dm_act)),
+#                          'std': np.ones((1, self.dm_obs + self.dm_act))}
+#         else:
+#             self.norm = norm
+#
+#         self.nonlinearity = nonlinearity
+#
+#         sizes = [self.dm_obs + self.dm_act] + list(hidden_neurons) + [self.nb_states]
+#         self.regressor = NeuralRecurrentRegressor(sizes, prior=self.prior, norm=self.norm,
+#                                                   nonlin=self.nonlinearity, device=self.device)
+#
+#     @property
+#     @ensure_res_numpy_floats
+#     def logmat(self):
+#         return self.regressor.logmat.data
+#
+#     @logmat.setter
+#     @ensure_args_torch_floats
+#     def logmat(self, value):
+#         self.regressor.logmat.data = value
+#
+#     @property
+#     @ensure_res_numpy_floats
+#     def weights(self):
+#         return [self.regressor.layer.weight.data, self.regressor.output.weight.data]
+#
+#     @weights.setter
+#     @ensure_args_torch_floats
+#     def weights(self, value):
+#         self.regressor.layer.weight.data = value[0]
+#         self.regressor.output.weight.data = value[1]
+#
+#     @property
+#     @ensure_res_numpy_floats
+#     def biases(self):
+#         return [self.regressor.layer.bias.data, self.regressor.output.bias.data]
+#
+#     @biases.setter
+#     @ensure_args_torch_floats
+#     def biases(self, value):
+#         self.regressor.layer.bias.data = value[0]
+#         self.regressor.output.bias.data = value[1]
+#
+#     @property
+#     def params(self):
+#         return tuple([self.logmat, self.weights, self.biases])
+#
+#     @params.setter
+#     def params(self, value):
+#         self.logmat = value[0]
+#         self.weights = value[1]
+#         self.biases = value[2]
+#
+#     def initialize(self, x, u, **kwargs):
+#         pass
+#
+#     def sample(self, z, x, u):
+#         mat = np.squeeze(np.exp(self.log_transition(x, u)[0]))
+#         return npr.choice(self.nb_states, p=mat[z, :])
+#
+#     def likeliest(self, z, x, u):
+#         mat = np.squeeze(np.exp(self.log_transition(x, u)[0]))
+#         return np.argmax(mat[z, :])
+#
+#     def permute(self, perm):
+#         self.logmat = self.logmat[np.ix_(perm, perm)]
+#         self.weights[-1] = self.weights[-1][:, perm]
+#         self.biases[-1] = self.biases[-1][perm]
+#
+#     @ensure_res_numpy_floats
+#     def log_prior(self):
+#         self.regressor.eval()
+#         return self.regressor.log_prior()
+#
+#     def log_transition(self, x, u):
+#         self.regressor.eval()
+#
+#         logtrans = []
+#         for _x, _u in zip(x, u):
+#             T = np.maximum(len(_x) - 1, 1)
+#             _in = np.hstack((_x[:T, :], _u[:T, :self.dm_act]))
+#             _logtrans = np_float(self.regressor.forward(_in))
+#             logtrans.append(_logtrans - logsumexp(_logtrans, axis=-1, keepdims=True))
+#         return logtrans
+#
+#     def m_step(self, zeta, x, u, weights=None, **kwargs):
+#         xu = []
+#         for _x, _u in zip(x, u):
+#             xu.append(np.hstack((_x[:-1, :], _u[:-1, :self.dm_act])))
+#
+#         aux = []
+#         if weights is not None:
+#             for _w, _zeta in zip(weights, zeta):
+#                aux.append(_w[:-1, None, None] * _zeta)
+#             zeta = aux
+#
+#         self.regressor.fit(np.vstack(zeta), np.vstack(xu), **kwargs)
+#
+#     @property
+#     def params(self):
+#         return super(NeuralRecurrentTransition, self).params + (self.weights, self.biases)
+#
+#     @property
+#     def transition_matrix(self):
+#         return to_npy(self.regressor.logmat.data)
+#
+#     def log_prior(self):
+#         self.regressor.eval()
+#         if self.prior:
+#             return to_npy(self.regressor.log_prior())
+#         else:
+#             return self.regressor.log_prior()
+#
+#     def sample(self, z, x, u=None):
+#         return self.maximum(z, x)
+#
+#     def maximum(self, z, x, u=None):
+#         mat = np.squeeze(np.exp(self.log_transition(x, u)[0]))
+#         return np.argmax(mat[z, :])
+#
+#     def likeliest(self, z, x, u=None):
+#         mat = np.squeeze(np.exp(self.log_transition(x, u)[0]))
+#         return np.argmax(mat[z, :])
+#
+#     def log_transition(self, x, u=None):
+#         """ log transition for single x and u """
+#         self.regressor.eval()
+#
+#         logtrans = []
+#         _logtrans = to_npy(self.regressor.forward(to_torch(np.hstack((x,u))[None])))
+#         logtrans.append(_logtrans)
+#         return logtrans
+#
+#     def log_transitions(self, x, u=None):
+#         """ log transitions for stack of x and u """
+#         self.regressor.eval()
+#
+#         logtrans = []
+#         for _x, _u in zip(x, u):
+#             T = np.maximum(len(_x) - 1, 1)
+#             _in = np.hstack((_x[:T, :], _u[:T, :self.act_dim]))
+#             _logtrans = to_npy(self.regressor.forward(to_torch(_in)))
+#             logtrans.append(_logtrans)
+#         return logtrans
+#
+#     def m_step(self, xi, x, u, **kwargs):
+#         xu = []
+#         for _x, _u in zip(x, u):
+#             xu.append(np.hstack((_x[:-1, :], _u[:-1, :self.act_dim])))
+#
+#         self.regressor.fit(to_torch(np.vstack(xi)), to_torch(np.vstack(xu)), **kwargs)
 
 
 class NeuralRecurrentRegressor(nn.Module):

@@ -1,0 +1,71 @@
+% This file was created by tikzplotlib v0.9.3.
+\begin{tikzpicture}
+
+\begin{groupplot}[group style={group size=1 by 4}]
+\nextgroupplot[
+tick align=outside,
+tick pos=left,
+x grid style={white!69.0196078431373!black},
+xmin=0, xmax=1000,
+xtick style={color=black},
+y grid style={white!69.0196078431373!black},
+ylabel={\(\displaystyle \cos(\theta)\)},
+ymin=-1.2, ymax=1.2,
+ytick style={color=black}
+]
+\addplot graphics [includegraphics cmd=\pgfimage,xmin=0, xmax=1000, ymin=-1.2, ymax=1.2] {lul-000.png};
+\addplot [semithick, black]
+table {%
+lul-000.tsv};
+
+\nextgroupplot[
+tick align=outside,
+tick pos=left,
+x grid style={white!69.0196078431373!black},
+xmin=0, xmax=1000,
+xtick style={color=black},
+y grid style={white!69.0196078431373!black},
+ylabel={\(\displaystyle \sin(\theta)\)},
+ymin=-1.2, ymax=1.2,
+ytick style={color=black}
+]
+\addplot graphics [includegraphics cmd=\pgfimage,xmin=0, xmax=1000, ymin=-1.2, ymax=1.2] {lul-001.png};
+\addplot [semithick, black]
+table {%
+lul-001.tsv};
+
+\nextgroupplot[
+tick align=outside,
+tick pos=left,
+x grid style={white!69.0196078431373!black},
+xmin=0, xmax=1000,
+xtick style={color=black},
+y grid style={white!69.0196078431373!black},
+ylabel={\(\displaystyle \dot{\theta}\)},
+ymin=-8.2, ymax=8.2,
+ytick style={color=black}
+]
+\addplot graphics [includegraphics cmd=\pgfimage,xmin=0, xmax=1000, ymin=-8.2, ymax=8.2] {lul-002.png};
+\addplot [semithick, black]
+table {%
+lul-002.tsv};
+
+\nextgroupplot[
+tick align=outside,
+tick pos=left,
+x grid style={white!69.0196078431373!black},
+xlabel={steps},
+xmin=0, xmax=1000,
+xtick style={color=black},
+y grid style={white!69.0196078431373!black},
+ylabel={control},
+ymin=-4.4, ymax=4.4,
+ytick style={color=black}
+]
+\addplot graphics [includegraphics cmd=\pgfimage,xmin=0, xmax=1000, ymin=-4.4, ymax=4.4] {lul-003.png};
+\addplot [semithick, black]
+table {%
+lul-003.tsv};
+\end{groupplot}
+
+\end{tikzpicture}

@@ -36,7 +36,7 @@ class InitialState:
     def sample(self):
         return npr.choice(self.n_states, p=self.initial_distribution)
 
-    def m_step(self, gamma):
+    def m_step(self, gamma, **kwargs):
         _gamma = sum([_w[0, :] for _w in gamma])
         _gamma = _gamma / sum(_gamma)
 
@@ -95,9 +95,9 @@ class GaussianInitState:
 
         self.params = mu, sig
 
-
     def m_step(self, x, gamma, u=None, weights=None, **kwargs):
         self.update_gauss_params(x, gamma)
+
 
 class GaussianArInitState:
 

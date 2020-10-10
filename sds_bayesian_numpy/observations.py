@@ -13,7 +13,6 @@ from scipy import linalg
 from sds_bayesian_numpy.ext.utils import timeseries_to_kernel
 
 
-
 class GaussianBayesianObservation:
     def __init__(self, n_states, obs_dim, act_dim, prior={'W0': 1, 'nu0': 1, 'm0': 1, 'beta0': 1}, reg=1e-128):
         self.n_states = n_states
@@ -57,6 +56,13 @@ class GaussianBayesianObservation:
     @params.setter
     def params(self, value):
         self.mean, self.cov = value[0], value[1]
+
+    def sig(self, k):
+        return self.cov[k]
+
+    def mean_prediction(self, z, x, u=None):
+        _x = mvn(self.mean[z], cov=self.cov[z]).mean
+        return np.atleast_1d(_x)
 
     def update_gauss_params(self, x, gamma):
         _norm = 0

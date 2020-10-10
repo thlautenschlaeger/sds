@@ -54,7 +54,7 @@ def parallel_arhmm_fit(obs, act, options, nb_jobs):
     def fit_arhmm_job(args):
         obs, act, options = args
 
-        rarhmm = VBrARHMM(options['nb_states'],
+        rarhmm = ARHMM(options['nb_states'],
                        options['dm_obs'], options['dm_act'],
                        obs_prior=options['obs_prior'])
 
@@ -101,7 +101,7 @@ def parallel_rarhmm_fit(obs, act, options, nb_jobs):
     def fit_rarhmm_job(args):
         obs, act, options = args
 
-        rarhmm = VBrARHMM(options['nb_states'],
+        rarhmm = rARHMM(options['nb_states'],
                         options['dm_obs'], options['dm_act'],
                         obs_prior=options['obs_prior'],
                         trans_type=options['trans_type'],
@@ -362,7 +362,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Compare SOTA Models on Pendulum')
     parser.add_argument('--env', help='environment observation', default='cart')
     parser.add_argument('--model', help='representation model', default='rarhmm')
-    parser.add_argument('--nb_jobs', help='number of data splits', default=24, type=int)
+    parser.add_argument('--nb_jobs', help='number of data splits', default=6, type=int)
     parser.add_argument('--incremental', help='approximate delta', action='store_true', default=False)
     parser.add_argument('--preprocess', help='whiten data', action='store_true', default=False)
     parser.add_argument('--nn_size', help='size of NN layer', default=64, type=int)
